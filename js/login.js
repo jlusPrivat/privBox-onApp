@@ -30,7 +30,7 @@ $(document).ready(function () {
 			switchDisplay('pwd', false);
 		
 		// Reset the Display for Card-auth:
-		switchDisplay('keycard', true)
+		switchDisplay('keycard', true);
 		
 		// Fade everything in
 		$('#fader').fadeTo("slow", .8);
@@ -74,6 +74,7 @@ function unactivate() {
 	});
 	clearInterval(intervall);
 	longpull.abort();
+	$.post("js_funcs.php", {"action": "abortLogin"});
 	
 }
 

@@ -1,197 +1,211 @@
 <?php
-require_once "includes/core.php";
-
 /*
-Requirements:
-- WiringPi Library
-- WakeOnLan
-- Autostart to this page
-- Apache, MySQL, PHP -> Start all as Service
-- php.ini set execution-timelimit = 40 seconds
+This is only opened by the local schedule holder Software.
+It has the following features, all sent via GET:
+
+Always returns:
+- outPins=(csv)
+- buttonPins=(csv)
+- switchPins=(csv)
+- virtualLatchPins=(csv)
+- onPins=(csv)
+- offPins=(csv)
+- nextAlarmId=(id or empty)
+- nextAlarmName=(name or empty)
+- nextAlarmTriggerIn=(time or 0)
+- nextAlarmSound=(string or empty)
+All seperated by :;:
+
+- action=START_UP: Maps all output pins to MODE out and resets the pins to the default value.
+- action=RELOAD_DATA: like StartUp, just without logging as startup
+- action=TRIGGER_ALARM&id=... Trigger the command for the alarm
+	this command also gives triggerAlarm=yes, if alarm is really to be triggered
+- action=TRIGGER_PIN&gpio=...&PorR=...[P for Push || R for Release]
+- action=CARD_SCANNED&serial=... Where serial must be numeric.
+
 */
 
-// Only open for localhost
-if ($SYSTEM["public_server_interface"] == 0 && $_SERVER["REMOTE_ADDR"] != "127.0.0.1")
-	die("Unauthorisierter Zugriff");
+require_once 'includes/core.php';
+if ($_SERVER['REMOTE_ADDR'] != '127.0.0.1' && $SYSTEM['controllerLocalOnly'] == 1)
+	die('Unsifficient permissions to access non-locally.');
 
-// If a key has been read:
-if (isset($_POST["key"])) {
-	$key = $_POST["key"];
+if (!isset($_GET['action']))
+	die('You need to declare the GET-Param "action":<br>'
+		. 'startUp, reloadData, buttonPushed, cardScanned');
 	
-	// No valid key: Length or numeric
-	if (strlen($key) != $SYSTEM["key_length"] || !is_numeric($key))
-		exit;
+// prohibit the use of the socket:
+$SYSTEM["deadMode"] = 1;
 	
-	// If there is a pending Webinterface-request:
-	if ($SYSTEM["active_timestamp"] + 30 > time()) {
-		
-		// If a certain card is requested:
-		if ($SYSTEM["active_certain_key"] == $key) {
-			// Seems like the user wants to log in:
-			systemRewrite("active_certain_key", "0");
-			exit;
+
+switch ($_GET['action']) {
+	case 'START_UP':
+		// reset all pins in the db
+		mysqli_query($CONNECTION, 'UPDATE a SET a.switchState = b.defaultOnStartup FROM pb_pins a
+					INNER JOIN pb_pins b ON a.pinId = b.pinId');
+		writeLog('timedAction', 'StartUp Sequence complete');
+		die(getReloadData());
+	break;
+
+	case 'RELOAD_DATA':
+		// do actually nothing except for echoing the default stuff
+		die(getReloadData());
+	break;
+
+	case 'TRIGGER_ALARM':
+		if (!isset($_GET['id'])) {
+			writeLog('error', 'Controller did trigger Alarm with no ID');
+			die('FAIL');
 		}
 		
-		// If any card is requested:
-		if ($SYSTEM["active_any_key"] == "0") {
-			systemRewrite("active_any_key", $_POST["key"]);
-			exit;
+		// Get the alarmSwitch:
+		$switch = mysqli_fetch_array(mysqli_query($CONNECTION, 'SELECT pinId FROM pb_pins '
+			. 'WHERE FIND_IN_SET(\'alarmIn\', special)>0 AND switchState = 0 LIMIT 1'), MYSQLI_ASSOC);
+		if (!empty($switch))
+			die(getReloadData());
+		
+		// Get the Alarm Clock:
+		$alarm = mysqli_fetch_array(mysqli_query($CONNECTION, 'SELECT description, days, time, '
+			. 'active, wavName, command FROM pb_alarms WHERE alarmId = ' . $_GET['id']));
+		if (empty($alarm))
+			die(getReloadData());
+		
+		// Check, if it is still an allowed day:
+		if (!in_array(date('D'), explode(',', $alarm['days'])))
+			die(getReloadData());
+		
+		// Check, if it still within a time frame of 30 Seconds:
+		$timeDifference = date('s') + 60*date('i') + 3600*date('G') - $alarm['time'] * 60;
+		if ($timeDifference > 30 || $timeDifference < -30)
+			die(getReloadData());
+		
+		// Ok, do the Alarm stuff
+		callCommand($alarm['command']);
+		writeLog('timedAction', 'Alarm Clock: Triggered ' . $alarm['description']);
+		die('triggerAlarm=yes:;:' . getReloadData());
+	break;
+	
+	// If a Pin had been triggered:
+	case 'TRIGGER_PIN':
+		if (!isset($_GET['gpio'], $_GET['PorR']) ||
+		$_GET['PorR'] != 'P' && $_GET['PorR'] != 'R') {
+			writeLog('error', 'Called controller.php?triggerPin without valid params');
+			die('FAIL');
 		}
 		
-	}
-	
-	// check for the user:
-	$id = mysqli_fetch_array(mysqli_query($CONNECTION, 'SELECT id FROM pb_users WHERE card_id = "' . $key . '" LIMIT 1'), MYSQLI_ASSOC);
-	$benutzer = new user($id["id"]);
-	
-	// If in Lockdown and the user is not an admin: Cancel
-	if ($SYSTEM["lockdown"] && $benutzer->data["admin"] != 1)
-		exit;
-	
-	// If the card is dedicaded to switch the alarm:
-	if ($benutzer->data["deactivate_alarm"] == 1) {
-		writeLog(4, false, $benutzer->data["id"]);
-		if ($SYSTEM["alarm_once_timeout"] == 1)
-			systemRewrite("alarm_once_timeout", 0);
-		else
-			systemRewrite("alarm_once_timeout", 1);
-		exit;
-	}
-	
-	// Here comes the hardware part: Call the commands:
-	$helper = $benutzer->getCurrentActions(true);
-	
-	if ($helper === false) {
-		// Per_count was used up or card not active:
-		writeLog(2, false, $benutzer->data["id"]);
-		exit;
-	}
-	
-	
-	foreach ($helper as $command_id) {
-		callCommand($command_id);
-	}
-	
-	// And log the success
-	writeLog(2, true, $benutzer->data["id"]);
-	exit;
-}
+		// Get the Pin:
+		$pin = mysqli_fetch_array(mysqli_query($CONNECTION, 'SELECT onPushed, onReleased, sort, '
+			. 'special, switchState FROM pb_pins WHERE gpio = ' . $_GET['gpio']), MYSQLI_ASSOC);
+		if (empty($pin)) {
+			writeLog('error', 'Pin not found but triggered: ' . $_GET['gpio']);
+			die('FAIL');
+		}
+		
+		$switchState = $pin['switchState'] == 1 ? true : false;
+		// Handle the pin differently judging by the type:
+		if ($pin['sort'] == 'inButton')
+			$switchState = $_GET['PorR'] == 'P' ? true : false;
+		elseif ($pin['sort'] == 'inVirtualLatch' && $_GET['PorR'] == 'P')
+			$switchState = !$switchState;
+		elseif ($pin['sort'] == 'inSwitch')
+			$switchState = $_GET['PorR'] == 'P' ? true : false;
+		if ($pin['sort'] != 'inButton')
+			mysqli_query($CONNECTION, 'UPDATE pb_pins SET switchState = '
+				. ($switchState ? '1' : '0') . ' WHERE gpio = ' . $_GET['gpio']);
+		
+		// Finally check, if it means to log the user out of the desk
+		if ($pin['special'] == 'logoutIn')
+			logoutFromDesk();
+		
+		die(getReloadData());
+	break;
 
+	
+	case 'CARD_SCANNED':
+		if (!isset($_GET['serial']) || !is_numeric($_GET['serial'])) {
+			writeLog('error', 'No valid serial given');
+			die('FAIL');
+		}
+		
+		// If it is used for the system (webIFace):
+		if ($SYSTEM['getCertainCard'] == $_GET['serial']) {
+			systemRewrite('getCertainCard', 0);
+			switchLoginWebOut(false);
+			die(getReloadData());
+		}
+		if ($SYSTEM['getAnyCard'] == 0) {
+			systemRewrite('getAnyCard', $_GET['serial']);
+			switchLoginWebOut(false);
+			die(getReloadData());
+		}
+		
+		// Get the User ID:
+		$udata = mysqli_fetch_array(mysqli_query($CONNECTION, 'SELECT userId FROM '
+			. 'pb_users WHERE serial = ' . $_GET['serial'] . ' LIMIT 1'), MYSQLI_ASSOC);
+		
+		if (empty($udata))
+			die('FAIL');
+		
+		logInToDesk($udata['userId']);
+		die(getReloadData());
+	break;
 
-// If the alarm has to go off
-if (isset($_POST["alarm"]) && $_POST["alarm"] == 1) {
-	
-	// if the alarm is deactivated permanently:
-	if ($SYSTEM["alarm_active"] == 0)
-		exit;
-	
-	// if the alarm is not today:
-	$alarm_days = explode(",", $SYSTEM["alarm_days"]);
-	if (!in_array(date('N'), $alarm_days))
-		exit;
-	
-	// If the alarm is deactivated once:
-	if ($SYSTEM["alarm_once_timeout"] == 1) {
-		systemRewrite("alarm_once_timeout", 0);
-		exit;
-	}
-	
-	// Everthing is fine:
-	/*$alarm_commands = explode(",", $SYSTEM["alarm_commands"]);
-	foreach ($alarm_commands as $command) {
-		callCommand($command);
-	}*/
-	callCommand($SYSTEM["alarm_commands"]);
-	writeLog(4, true);
-	die("OK");
-	
+	// Error, because action is unknown
+	default:
+		writeLog('error', 'Unknown caller in controller.php: ' . $_GET['action']);
+		die('FAIL');
+	break;
 }
 
 
 
-// Autostart the needed Commands
-$autostarts = mysqli_query($CONNECTION, "SELECT id FROM pb_commands WHERE autostart = 1");
-while ($command = mysqli_fetch_array($autostarts, MYSQLI_ASSOC)) {
-	callCommand($command["id"]);
+/*Always returns:
+- outPins=(csv)
+- buttonPins=(csv)
+- switchPins=(csv)
+- virtualLatchPins=(csv)
+- onPins=(csv)
+- offPins=(csv)
+- nextAlarmId=(id or empty)
+- nextAlarmName=(name or empty)
+- nextAlarmTriggerIn=(time or 0)
+- nextAlarmSound=(string or empty)*/
+function getReloadData() {
+	global $CONNECTION;
+	$returner = '';
+	
+	// first the pins:
+	$outPins = Array();
+	$buttonPins = Array();
+	$switchPins = Array();
+	$virtualLatchPins = Array();
+	$onPins = Array();
+	$offPins = Array();
+	
+	$pins = mysqli_query($CONNECTION, 'SELECT * FROM pb_pins');
+	while ($pin = mysqli_fetch_array($pins, MYSQLI_ASSOC)) {
+		switch ($pin['sort']) {
+			case 'inButton': $buttonPins[] = $pin['gpio']; break;
+			case 'inVirtualLatch': $virtualLatchPins[] = $pin['gpio']; break;
+			case 'inSwitch': $switchPins[] = $pin['gpio']; break;
+			case 'output': $outPins[] = $pin['gpio']; break;
+			default: writeLog('error', 'Unknown sort of pinId ' . $pin['pinId']); break;
+		}
+		switch ($pin['switchState']) {
+			case 0: $offPins[] = $pin['gpio']; break;
+			case 1: $onPins[] = $pin['gpio']; break;
+		}
+	}
+	$returner .= 'outPins=' . implode(',', $outPins)
+	. ':;:buttonPins=' . implode(',', $buttonPins)
+	. ':;:switchPins=' . implode(',', $switchPins)
+	. ':;:virtualLatchPins=' . implode(',', $virtualLatchPins)
+	. ':;:onPins=' . implode(',', $onPins)
+	. ':;:offPins=' . implode(',', $offPins) . ':;:';
+	
+	
+	// then do everything with the alarms
+	$returner .= getNextAlarm();
+	
+	return $returner;
 }
-
-// Get the Time:
-$to_alarm = (($SYSTEM["alarm_time"] * 60) - ((date('G') * 3600) + (date('i') * 60) + date('s')));
-if ($to_alarm < 0)
-	$to_alarm = $to_alarm + 86400; // add one day in sec
-
-// If the alarm is deactivated (Sorry for the calculations beforehand)
-if ($SYSTEM["alarm_active"] == 0)
-	$to_alarm = 0;
-
-$include_js_vars = 'var key_length = ' . $SYSTEM["key_length"] . ';
-var browser_reload = ' . ($SYSTEM["browser_reload"] * 60000) . ';
-var to_alarm = ' . ($to_alarm * 1000) . ';';
-
-
-// Write into the log:
-if (!isset($_GET["reload"]))
-	writeLog(0, true);
-else
-	writeLog(1, true);
 ?>
-
-
-<!DOCTYPE html>
-
-<html>
-	<head>
-		<meta charset="UTF-8" />
-		<title>Internal System</title>
-		<script src="js/jquery.js" type="text/javascript"></script>
-		<script type="text/javascript"><?php echo $include_js_vars; ?>
-		var timer;
-		$(document).ready(function(){
-			
-			// Set the timeout for the reload
-			if (browser_reload) {
-				window.setTimeout(function() {
-					window.location.assign("http://127.0.0.1/controller.php?reload=1");
-				}, browser_reload);
-			}
-			
-			// is the audio-element available?
-			if ($('audio').length && to_alarm) {
-				// Set the timeout for the alarm clock:
-				window.setTimeout(function() {
-					$.post("controller.php", {"alarm": 1}, function(data) {
-						// Play the audio
-						if (data == "OK")
-							$('audio').get(0).play();
-					});
-				}, to_alarm);
-			}
-			
-		});
-		
-		
-		// Function, that is called every time a change has been made
-		function submitCard() {
-			
-			var inhalt = $('#key').val();
-			if (inhalt.length == key_length) {
-				// Key complete and can be sent:
-				$.post("controller.php", {"key": inhalt});
-			}
-			
-			// And clear it, after there was 1 second, where no input was made:
-			if (timer)
-				clearTimeout(timer);
-			timer = setTimeout(function() {$('#key').val("");}, 1000);
-			
-		}
-		</script>
-	</head>
-	<body>
-		<input type="text" id="key" oninput="submitCard();" autofocus />
-		<?php
-		if (file_exists("wecker.mp3"))
-			echo '<audio src="wecker.mp3" preload="auto">Not supported</audio>';
-		?>
-	</body>
-</html>

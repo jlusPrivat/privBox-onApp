@@ -5,7 +5,7 @@ if (!file_exists('includes/mysql.php')) {
 }
 if (file_exists('install/index.php'))
 	die('Delete the installation directory first.');
-	
+
 
 require_once "includes/core.php";
 
@@ -34,9 +34,9 @@ if (isset($USER)) {
 	
 	// Set the Menu and basic Design:
 	$STYLE = 'basic.css';
-	$ECHO = '<div id="top"><div id="header"><h1>PrivBox Control</h1></div><div id="topmenu"><ul>'
+	$ECHO = '<div id="top"><div id="header"><h1>' . $SYSTEM['name'] . ' Control</h1></div><div id="topmenu"><ul>'
 	. '<li><a href="http://www.jlus.de" target="_blank">Entwicklerhomepage</a></li>'
-	. '<li><a href="http://www.secucom.org" target="_blank">Secucom Webinterface</a></li>'
+	. '<li><a href="https://jlus.de/index.php/entwicklungen/7-privbox" target="_blank">&Uuml;ber PrivBox</a></li>'
 	. '<li><a href="index.php?action=logout">Logout</a></li>'
 	. '</ul></div><div class="clear"></div></div>'
 	. '<div id="contentwrap"><div class="cright">';
@@ -51,8 +51,8 @@ if (isset($USER)) {
 	$ECHO .= '</div><div class="cleft"><ul>'
 	. $menu
 	. '</ul></div><div class="clear"></div></div><div id="footer"><div class="left">Copyright &copy; '
-	. '2017 <a href="http://www.jlus.de" target="_blank">Jonathan Lusky</a></div><div class="right"><strong>'
-	. $USER->data["username"] . '</strong> [#' . $USER->data["id"] . ']</div><div class="clear"></div></div>';
+	. '2018 <a href="http://www.jlus.de" target="_blank">Jonathan Lusky</a></div><div class="right"><strong>'
+	. $USER->data['name'] . '</strong> [#' . $USER->data['userId'] . ']</div><div class="clear"></div></div>';
 }
 
 
@@ -61,11 +61,13 @@ if (isset($USER)) {
 else {
 	// Download all possible user:
 	$users = '';
-	$sql = mysqli_query($CONNECTION, 'SELECT id, username, pwd, admin FROM pb_users WHERE iface = 1 AND active = 1' . ($SYSTEM["lockdown"] == 1 ? ' AND admin = 1' : ''));
+	$sql = mysqli_query($CONNECTION, 'SELECT userId, name, pwd, canManage FROM pb_users WHERE '
+		. 'canUseIFace = 1 AND active = 1');
 	while ($row = mysqli_fetch_array($sql, MYSQLI_ASSOC)) {
-		$users .= '<div id="user_' . $row["id"] . '" class="user' . ($row["admin"] == 1 ? ' admin' : '')
-		. (empty($row["pwd"]) ? '' : ' pwd') . '"><img src="imgs/' . (is_file('imgs/' . $row["id"] . '.png') ? $row["id"] : 'default')
-		. '.png" alt="Bild" />' . $row["username"] . '</div>';
+		$users .= '<div id="user_' . $row['userId'] . '" class="user' . ($row['canManage'] == 1 ? ' admin' : '')
+		. (empty($row["pwd"]) ? '' : ' pwd') . '"><img src="imgs/'
+		. (is_file('imgs/' . $row["userId"] . '.png') ? $row["userId"] : 'default')
+		. '.png" alt="Bild" />' . $row["name"] . '</div>';
 	}
 	
 	// User is not logged in:
@@ -86,7 +88,7 @@ else {
 <html>
 	<head>
 		<meta charset="utf-8" />
-		<title>PrivBox Webinterface</title>
+		<title><?php echo $SYSTEM['name']; ?> Webinterface</title>
 		<link rel="stylesheet" href="<?php echo $STYLE; ?>" type="text/css" />
 		<?php foreach ($SCRIPTS as $script) {echo '<script src="js/' . $script . '" type="text/javascript"></script>' . PHP_EOL;} ?>
 	</head>
