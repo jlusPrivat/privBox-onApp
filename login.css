@@ -1,0 +1,131 @@
+body {
+	background: repeating-linear-gradient(rgba(0, 0, 96, .2), rgba(0, 0, 0, .0) 30px, rgba(0, 0, 96, .2) 60px), radial-gradient(#80FFFF, #8080FF);
+	font-family: arial;
+	margin: 0px;
+	padding: 0px;
+}
+
+html {
+	min-height: 100%;
+	margin: 0px;
+	padding: 0px;
+}
+
+#main {
+	margin-left: calc(50% - 426px);
+	margin-top: 100px;
+	width: 852px;
+	background: rgba(0, 0, 0, .3);
+	border-radius: 4px;
+	padding-bottom: 30px;
+}
+
+.user {
+	border: 2px solid #A0FFA0;
+	width: 200px;
+	margin: 30px;
+	margin-bottom: 0px;
+	padding: 10px;
+	display: inline-block;
+	font-size: 16pt;
+	color: #A0FFA0;
+	background-color: rgba(0, 0, 0, .3);
+	text-align: center;
+}
+
+.user img {
+	width: 60px;
+	display: block;
+	margin: auto;
+	margin-bottom: 10px;
+}
+
+.admin {
+	border-color: #FFA0A0;
+	color: #FFA0A0;
+}
+
+.pwd {
+	background-image: url(imgs/lock.png);
+	background-position: 2px 5px;
+	background-repeat: no-repeat;
+}
+
+.user:hover {
+	color: #FFFFFF;
+	border-color: #FFFFFF;
+}
+
+#fader  {
+	position: absolute;
+	height: 100%;
+	width: 100%;
+	background-color: #000000;
+	left: 0px;
+	top: 0px;
+	z-index: 1;
+	display: none;
+}
+
+#prompt {
+	position: absolute;
+	display: none;
+	z-index: 2;
+	height: 300px;
+	width: 800px;
+	box-shadow: 0px 0px 30px 0px #0000FF;
+	padding: 20px;
+	border-radius: 5px;
+	top: 100px;
+	left: calc(50% - 420px);
+	background: linear-gradient(#8080FF, #A0A0FF, #8080FF);
+}
+
+#border_active {
+	border: 5px solid yellow;
+	float: left;
+}
+
+#pwd, #keycard, #continue, #countdown {
+	display: inline-block;
+	background-position: bottom center;
+	background-size: 100px 100px;
+	background-repeat: no-repeat;
+	width: 150px;
+	height: 130px;
+	text-align: center;
+	font-size: 16pt;
+	color: #800000;
+	padding: 0px 10px;
+}
+
+#pwd {
+	background-image: url(imgs/cross_mid.png);
+	border-right: 2px solid #EEEEEE;
+}
+
+#keycard {
+	background-image: url(imgs/cross_mid.png);
+	border-right: 2px solid #EEEEEE;
+}
+
+#continue {
+	background-image: url(imgs/next_mid.png);
+	display: none;
+}
+
+#continue:hover {
+	background-color: rgba(0, 0, 0, .2);
+}
+
+#countdown {
+	background-image: url(imgs/clock_mid.png);
+}
+
+#pwdField {
+	background: linear-gradient(#D0D0EE, #FFFFFF, #D0D0EE);
+	font-size: 15pt;
+	border: 1px solid orange;
+	width: 400px;
+	padding: 10px;
+}

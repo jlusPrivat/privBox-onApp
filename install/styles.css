@@ -1,0 +1,64 @@
+body {
+	background: linear-gradient(#AFAFAF, #EEEEEE 30%) no-repeat;
+	background-color: #EEEEEE;
+	font-family: arial;
+	font-size: 12pt;
+}
+
+h1 {
+	font-size: 20pt;
+	color: #7070FF;
+	margin-top: 0px;
+}
+
+#hidden-button {
+	width: 0px;
+	height: 0px;
+	padding: 0px;
+	margin: 0px;
+	outline: none;
+	border: none;
+}
+
+#main {
+	width: 85%;
+	background-color: #FFFFFF;
+	border: 1px solid #000000;
+	margin: 10px auto 0px;
+}
+
+#header {
+	border-bottom: 1px solid #000000;
+	padding: 5px;
+	font-weight: bold;
+	font-size: 14pt;
+	height: 30px;
+	margin-bottom: 5px;
+	line-height: 30px;
+	background: linear-gradient(#A0A0FF, #FFFFFF 30%) no-repeat;
+}
+
+#footer {
+	border-top: 1px solid #000000;
+	padding: 5px;
+	font-size: 12pt;
+	height: 30px;
+	margin-top: 5px;
+	line-height: 30px;
+	background: linear-gradient(#FFFFFF 70%, #A0A0FF) no-repeat;
+}
+
+#header .right, #footer .right {
+	float: right;
+	height: 30px;
+}
+
+.content {
+	padding: 10px;
+}
+
+.error {
+	font-weight: bold;
+	margin-bottom: 10px;
+	color: #FF0000;
+}
